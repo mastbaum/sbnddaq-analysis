@@ -19,5 +19,5 @@ of one of the drivers from `sbnddaq-readout` (e.g. `test_driver`).
 
 Other configuration options--the name of the output root file, whether
 to save histograms in the output, and the conversion from frame number
-to time--are all currently set in `Main.cpp`, but they will soon be
+to time--are all currently set in `Main.cc`, but they will soon be
 configurable as input arguments.
