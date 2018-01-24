@@ -21,6 +21,7 @@
 #include "canvas/Persistency/Common/FindOne.h"
 
 #include "sbnddaq-datatypes/Overlays/NevisTPCFragment.hh"
+#include "sbnddaq-datatypes/NevisTPC/NevisTPCTypes.hh"
 #include "artdaq-core/Data/Fragment.hh"
 
 #include "NevisDataHeader.hh"
@@ -84,7 +85,16 @@ int main(int argv, char** argc) {
     for(auto const& rawfrag : *daq_handle){
       sbnddaq::NevisTPCFragment fragment(rawfrag);
       auto fragment_header = fragment.header(); 
-      
+
+      const sbnddaq::NevisTPCFragmentMetadata* meta = fragment.metadata();
+      const uint32_t nsamples = meta->NChannels() * meta->SamplesPerChannel();
+
+      const sbnddaq::NevisTPC_ADC_t* data = fragment.data();
+      for (size_t i=0; i<nsamples; i++) {
+        std::cout << std::hex << data[i] << " ";
+      }
+      std::cout << std::endl;
+
       data_header = NevisDataHeader(fragment_header, frame_to_dt); 
       output->cd();
       header.Fill();
