@@ -4,7 +4,7 @@ Right now the code just makes some TTree's with a few of the variables
 defined in the NevisTPCHeader, with the option to also save histograms
 of those variables.
 
-** To Use **
+**To Use**
 
 Running `setup.sh` will setup the required libraries, and then calling
 `make` will build the executable. 
