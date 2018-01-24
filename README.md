@@ -6,7 +6,11 @@ of those variables.
 
 **To Use**
 
-Running `setup.sh` will setup the required libraries, and then calling
+First, you need to change `SBNDDAQ_DATATYPES_LOCATION` in `setup.sh` to
+the location of your local repository containing `sbnddaq-datatypes` and
+`artdaq`.
+
+Then, running `setup.sh` will setup the required libraries, and then calling
 `make` will build the executable. 
 
 To run the program, call `./analysis [input_files]` where
