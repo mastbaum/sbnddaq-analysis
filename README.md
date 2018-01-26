@@ -1,9 +1,5 @@
 # Basic DAQ Analysis Code #
 
-Right now the code just makes some TTree's with a few of the variables
-defined in the NevisTPCHeader, with the option to also save histograms
-of those variables.
-
 **To Use**
 
 First, you need to change `SBNDDAQ_DATATYPES_LOCATION` in `setup.sh` to
@@ -21,3 +17,9 @@ Other configuration options--the name of the output root file, whether
 to save histograms in the output, and the conversion from frame number
 to time--are all currently set in `Main.cc`, but they will soon be
 configurable as input arguments.
+
+*Waveform Plot*
+You can make a waveform plot with the output of `analysis` by running
+the script `waveform.py`. See the source for arguments setting
+input/output file names and channel/entry to be plotted.
+
