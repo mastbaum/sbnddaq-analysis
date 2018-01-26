@@ -12,6 +12,7 @@
 #include "TFile.h"
 #include "TStyle.h"
 #include "TSystem.h"
+#include "TGraph.h"
 
 //"art" includes (canvas, and gallery)
 #include "canvas/Utilities/InputTag.h"
@@ -21,6 +22,9 @@
 #include "canvas/Persistency/Common/FindOne.h"
 
 #include "sbnddaq-datatypes/Overlays/NevisTPCFragment.hh"
+#include "sbnddaq-datatypes/NevisTPC/NevisTPCTypes.hh"
+#include "sbnddaq-datatypes/NevisTPC/NevisTPCUtilities.hh"
+
 #include "artdaq-core/Data/Fragment.hh"
 
 #include "NevisDataHeader.hh"
@@ -34,23 +38,15 @@ int main(int argv, char** argc) {
   // TODO: make these configurable at command line
   double frame_to_dt = 1.6e-3; // units of seconds
   TFile* output = new TFile("output.root","RECREATE");
-  bool save_histograms = false;
+  bool save_waveforms = true;
+  bool verbose = true;
+  int n_events = 10;
+
+  // TODO: how to detect this?
+  // currently only the first 16 channels have anything interesting
+  size_t n_channels = 16;
 
   output->cd();
-
-  TH1D *h_event_numbers;
-  TH1D *h_frame_numbers;
-  TH1D *h_checksums;
-  TH1D *h_adc_word_counts;
-  TH1D *h_trig_frame_numbers;
-
-  if (save_histograms) {
-    h_event_numbers = new TH1D("event_numbers", "", 100, -0.5, 99.5);
-    h_frame_numbers = new TH1D("frame_numbers", "", 100, -0.5, 99.5);
-    h_checksums = new TH1D("checksums", "", 100, 2455. - 50.5, 2455. + 49.5);
-    h_adc_word_counts = new TH1D("adc_word_counts", "", 100, -0.5, 99.5);
-    h_trig_frame_numbers = new TH1D("trig_frame_numbers", "", 100, -0.5, 99.5);
-  }
 
   TTree header("nevis_header", "nevis_header");
   NevisDataHeader data_header;
@@ -61,6 +57,18 @@ int main(int argv, char** argc) {
   TBranch *b_trig_frame_number = header.Branch("trig_frame_number", &data_header.trig_frame_number);
   TBranch *b_frame_time = header.Branch("frame_time", &data_header.frame_time);
   TBranch *b_trig_frame_time = header.Branch("trig_frame_time", &data_header.trig_frame_time);
+
+  TTree t_adc_data("adc_data", "adc_data");
+
+  // NOTE: The way things are currently set up, if you push to per_channel_adc_counts 
+  // after this loop, the code will SEGFAULT. So don't do that.
+  std::vector<std::vector<int>*> per_channel_adc_counts(n_channels);
+  for (size_t i = 0; i < n_channels; i++) {
+    per_channel_adc_counts.push_back(new std::vector<int>);
+    char branch_name[30];
+    sprintf(branch_name, "channel_%lu_adc_words", i);
+    (void) t_adc_data.Branch(branch_name, &per_channel_adc_counts[i]);
+  }
 
   (void)b_event_number;
   (void)b_frame_number;
@@ -77,7 +85,9 @@ int main(int argv, char** argc) {
     filename.push_back(std::string(argc[i]));
   }
 
-  for (gallery::Event ev(filename) ; !ev.atEnd(); ev.next()) {
+  int event_ind = 0;
+  for (gallery::Event ev(filename) ; !ev.atEnd() && event_ind < n_events; ev.next()) {
+    event_ind ++;
 
     auto const& daq_handle = ev.getValidHandle<std::vector<artdaq::Fragment>>(daqTag);
 
@@ -87,37 +97,39 @@ int main(int argv, char** argc) {
       
       data_header = NevisDataHeader(fragment_header, frame_to_dt); 
       output->cd();
+
+      if (verbose) {
+	std::cout << "EVENT NUMBER: "  << data_header.event_number << std::endl;
+	std::cout << "FRAME NUMBER: "  << data_header.frame_number << std::endl;
+	std::cout << "CHECKSUM: "  << data_header.checksum << std::endl;
+	std::cout << "ADC WORD COUNT: "  << data_header.adc_word_count << std::endl;
+	std::cout << "TRIG FRAME NUMBER: "  << data_header.trig_frame_number << std::endl;
+      }
+
+      std::unordered_map<uint16_t,sbnddaq::NevisTPC_Data_t> waveform_map;
+      size_t n_waveforms = fragment.decode_data(waveform_map);
+      std::cout << "Decoded data. Found " << n_waveforms << " waveforms." << std::endl;
+      for (auto waveform: waveform_map) {
+        if (save_waveforms && waveform.first < n_channels) {
+          for (auto adc: waveform.second) {
+            per_channel_adc_counts[waveform.first]->push_back((int) adc);
+          }
+        }
+      }  // iterate over fragments
+      t_adc_data.Fill();
       header.Fill();
 
-      if (save_histograms) {
-	h_event_numbers->Fill((double)data_header.event_number);
-	std::cout << "EVENT NUMBER: "  << data_header.event_number << std::endl;
-	
-	h_frame_numbers->Fill((double)data_header.frame_number);
-	std::cout << "FRAME NUMBER: "  << data_header.frame_number << std::endl;
-	
-	h_checksums->Fill((double)data_header.checksum);
-	std::cout << "CHECKSUM: "  << data_header.checksum << std::endl;
-	
-	h_adc_word_counts->Fill((double)data_header.adc_word_count);
-	std::cout << "ADC WORD COUNT: "  << data_header.adc_word_count << std::endl;
-	
-	h_trig_frame_numbers->Fill((double)data_header.trig_frame_number); 
-	std::cout << "TRIG FRAME NUMBER: "  << data_header.trig_frame_number << std::endl;
+      // clear out adc count containers for next iter
+      for (unsigned i = 0; i < per_channel_adc_counts.size(); i++) {
+        per_channel_adc_counts[i]->clear();
       }
     }// Iterate through fragments
   }// Iterate through events
 
-
+  std::cout << "Saving..." << std::endl;
   output->cd();
-  if (save_histograms) {
-    h_event_numbers->Write();
-    h_frame_numbers->Write();
-    h_checksums->Write();
-    h_adc_word_counts->Write();
-    h_trig_frame_numbers->Write();
-  }
   header.Write();
+  t_adc_data.Write();
 
   output->Close();
   return 0;
