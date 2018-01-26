@@ -27,6 +27,7 @@ LDFLAGS=$$(root-config --libs) \
         -L $(NUSIMDATA_LIB) -l nusimdata_SimulationBase \
         -L $(LARCOREOBJ_LIB) -l larcoreobj_SummaryData \
         -L $(LARDATAOBJ_LIB) -l lardataobj_RecoBase -l lardataobj_MCBase -l lardataobj_RawData -l lardataobj_OpticalDetectorData -l lardataobj_AnalysisBase \
+	-L $(SBNDDAQ_DATATYPES_LIB) -l sbnddaq-datatypes_Overlays -l sbnddaq-datatypes_NevisTPC \
 	#-L $(ARTDAQ_CORE_INC) -l artdaq_core
 	#-L $(BERNFEBDAQ_CORE_LIB) -l bernfebdaq_core_Overlays
 
