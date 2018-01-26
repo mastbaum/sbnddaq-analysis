@@ -1,6 +1,6 @@
 # Basic DAQ Analysis Code #
 
-***To Use***
+**To Use**
 
 First, you need to change `SBNDDAQ_DATATYPES_LOCATION` in `setup.sh` to
 the location of your local repository containing `sbnddaq-datatypes` and
