@@ -1,6 +1,6 @@
 # Basic DAQ Analysis Code #
 
-**To Use**
+***To Use***
 
 First, you need to change `SBNDDAQ_DATATYPES_LOCATION` in `setup.sh` to
 the location of your local repository containing `sbnddaq-datatypes` and
@@ -18,7 +18,8 @@ to save histograms in the output, and the conversion from frame number
 to time--are all currently set in `Main.cc`, but they will soon be
 configurable as input arguments.
 
-*Waveform Plot*
+**Waveform Plot**
+
 You can make a waveform plot with the output of `analysis` by running
 the script `waveform.py`. See the source for arguments setting
 input/output file names and channel/entry to be plotted.
