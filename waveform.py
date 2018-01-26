@@ -4,12 +4,16 @@ import argparse
 
 def main(args):
     adc_data_file = ROOT.TFile(args.input_file)
+
     adc_data = adc_data_file.Get("adc_data") 
-    adc_data.GetEntry(args.event)
+    adc_data.GetEntry(args.entry)
+    header_tree = adc_data_file.Get("nevis_header") 
+    header_tree.GetEntry(args.entry)
+
     branchname = "channel_%d_adc_words" % args.channel
     data = getattr(adc_data, branchname)
 
-    graph_title = "Event %i Channel %i Waveform" % (args.event, args.channel)
+    graph_title = "Event %i Channel %i Waveform" % (header_tree.event_number, args.channel)
     plot(data, args.output, graph_title)
 
 def plot(adc_data, output_name, graph_title):
@@ -38,6 +42,6 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--input_file", default="output.root")
     parser.add_argument("-o", "--output", default="waveform")
     parser.add_argument("-c", "--channel", type=int, default=0)
-    parser.add_argument("-e", "--event", type=int, default=0)
+    parser.add_argument("-e", "--entry", type=int, default=0)
     
     main(parser.parse_args())
