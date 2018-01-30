@@ -1,23 +1,18 @@
-//some standard C++ includes
+#include <cassert>
+#include <chrono>
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
-#include <stdlib.h>
 #include <string>
+#include <thread>
 #include <vector>
 #include <numeric>
 #include <getopt.h>
 
-//some ROOT includes
-#include "TInterpreter.h"
-#include "TROOT.h"
-#include "TH1F.h"
 #include "TTree.h"
 #include "TFile.h"
-#include "TStyle.h"
-#include "TSystem.h"
-#include "TGraph.h"
 #include "TFFTReal.h"
 
-//"art" includes (canvas, and gallery)
 #include "canvas/Utilities/InputTag.h"
 #include "gallery/Event.h"
 #include "gallery/ValidHandle.h"
@@ -27,34 +22,42 @@
 #include "sbnddaq-datatypes/Overlays/NevisTPCFragment.hh"
 #include "sbnddaq-datatypes/NevisTPC/NevisTPCTypes.hh"
 #include "sbnddaq-datatypes/NevisTPC/NevisTPCUtilities.hh"
-
 #include "artdaq-core/Data/Fragment.hh"
 
 #include "NevisDataHeader.hh"
 #include "WaveformData.hh"
-//This way you can be lazy
-using namespace art;
 
-int main(int argv, char** argc) {
-  if (argv == 0) {
+#include <hiredis/hiredis.h>
+
+int main(int argc, char** argv) {
+  if (argc == 0) {
     std::cout << "Pass in some imput files" << std::endl;
     return 1;
   }
-  //We have passed the input file as an argument to the function 
-  std::vector<std::string> filename;
-  for (int i = 1; i < argv; ++i) { 
-    std::cout << "FILE : " << argc[i] << std::endl; 
-    filename.push_back(std::string(argc[i]));
+
+  // Connect to the redis database
+  redisContext* rctx = redisConnect("127.0.0.1", 6379);
+  if (rctx != NULL && rctx->err) {
+    std::cerr << "Redis error: " <<  rctx->errstr << std::endl;
+    return 2;
   }
 
-  art::InputTag daqTag("daq","NEVISTPC");
+  // We have passed the input file as an argument to the function
+  std::vector<std::string> filename;
+  for (int i = 1; i < argc; ++i) {
+    std::cout << "FILE : " << argv[i] << std::endl;
+    filename.push_back(std::string(argv[i]));
+  }
+
+  art::InputTag daqTag("daq", "NEVISTPC");
 
   // TODO: make these configurable at command line
   double frame_to_dt = 1.6e-3; // units of seconds
   TFile* output = new TFile("output.root","RECREATE");
+  assert(output);
   bool save_waveforms = true;
   bool verbose = true;
-  int n_events = 10;
+  int n_events = 100;
   unsigned n_baseline_samples = 20;
 
   // TODO: how to detect this?
@@ -65,21 +68,13 @@ int main(int argv, char** argc) {
 
   TTree header("nevis_header", "nevis_header");
   NevisDataHeader data_header;
-  TBranch *b_event_number = header.Branch("event_number", &data_header.event_number);
-  TBranch *b_frame_number = header.Branch("frame_number", &data_header.frame_number);
-  TBranch *b_checksum = header.Branch("checksum", &data_header.checksum);
-  TBranch *b_adc_word_count = header.Branch("adc_word_count", &data_header.adc_word_count);
-  TBranch *b_trig_frame_number = header.Branch("trig_frame_number", &data_header.trig_frame_number);
-  TBranch *b_frame_time = header.Branch("frame_time", &data_header.frame_time);
-  TBranch *b_trig_frame_time = header.Branch("trig_frame_time", &data_header.trig_frame_time);
-
-  (void)b_event_number;
-  (void)b_frame_number;
-  (void)b_checksum;
-  (void)b_adc_word_count;
-  (void)b_trig_frame_number;
-  (void)b_frame_time;
-  (void)b_trig_frame_time;
+  header.Branch("event_number", &data_header.event_number);
+  header.Branch("frame_number", &data_header.frame_number);
+  header.Branch("checksum", &data_header.checksum);
+  header.Branch("adc_word_count", &data_header.adc_word_count);
+  header.Branch("trig_frame_number", &data_header.trig_frame_number);
+  header.Branch("frame_time", &data_header.frame_time);
+  header.Branch("trig_frame_time", &data_header.trig_frame_time);
 
   TTree t_raw_adc_digits("raw_adc_digits", "raw_adc_digits");
 
@@ -120,6 +115,8 @@ int main(int argv, char** argc) {
       data_header = NevisDataHeader(fragment_header, frame_to_dt); 
       output->cd();
 
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
       if (verbose) {
 	std::cout << "EVENT NUMBER: "  << data_header.event_number << std::endl;
 	std::cout << "FRAME NUMBER: "  << data_header.frame_number << std::endl;
@@ -128,9 +125,17 @@ int main(int argv, char** argc) {
 	std::cout << "TRIG FRAME NUMBER: "  << data_header.trig_frame_number << std::endl;
       }
 
+      std::time_t now = std::time(nullptr);
+      std::cout << now << std::endl;
+      assert(redisCommand(rctx, "SET stream/1:%i:event %i", now, data_header.event_number));
+      assert(redisCommand(rctx, "EXPIRE stream/1:%i:event %i", now, 600));
+      assert(redisCommand(rctx, "SET stream/1:%i:wordcount %i", now, data_header.adc_word_count));
+      assert(redisCommand(rctx, "EXPIRE stream/1:%i:wordcount %i", now, 600));
+
       std::unordered_map<uint16_t,sbnddaq::NevisTPC_Data_t> waveform_map;
       size_t n_waveforms = fragment.decode_data(waveform_map);
       std::cout << "Decoded data. Found " << n_waveforms << " waveforms." << std::endl;
+      size_t iwf = 0;
       for (auto waveform: waveform_map) {
         if (save_waveforms && waveform.first < n_channels) {
           unsigned peak = 0;
@@ -155,10 +160,15 @@ int main(int argv, char** argc) {
 
           // Baseline calculation assumes baseline is constant and that the first
           // `n_baseline_samples` of the adc values represent a baseline
-          per_channel_waveform_data[waveform.first].baseline = 
-            std::accumulate(waveform_samples.begin(), waveform_samples.begin() + n_baseline_samples, 0.0) / n_baseline_samples;
+          double baseline = std::accumulate(waveform_samples.begin(), waveform_samples.begin() + n_baseline_samples, 0.0) / n_baseline_samples;
+          per_channel_waveform_data[waveform.first].baseline = baseline;
 
           per_channel_waveform_data[waveform.first].peak = peak;
+
+
+          assert(redisCommand(rctx, "SET stream/1:%i:baseline:%i %f", now, iwf, baseline));
+          assert(redisCommand(rctx, "EXPIRE stream/1:%i:baseline:%i %i", now, iwf, 600));
+          iwf++;
         }
       }  // iterate over fragments
       t_waveform_data.Fill();
@@ -178,6 +188,9 @@ int main(int argv, char** argc) {
   t_raw_adc_digits.Write();
   t_waveform_data.Write();
 
+  redisFree(rctx);
+
   output->Close();
   return 0;
 }
+
